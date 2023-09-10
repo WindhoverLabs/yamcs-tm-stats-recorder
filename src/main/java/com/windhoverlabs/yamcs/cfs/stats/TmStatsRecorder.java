@@ -71,6 +71,7 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
   protected Thread thread;
   private ScheduledThreadPoolExecutor timer;
 
+  // TODO:Add max to bound flushIntervalSeconds so we don't fill RAM forever with statsData.
   private int flushIntervalSeconds = 15; // Amount of time to wait to write to file system.
 
   private Instant lastFlush; // Timestamp of last fush.
@@ -78,9 +79,12 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
 
   private String processor;
 
+  //  TODO:Make these configurable
   private boolean headerWritten = false;
 
   private boolean singleFileMode = true; // Not sure if this will be useful at all...
+
+  private boolean active = false;
 
   /* Constants */
   static final byte[] CFE_FS_FILE_CONTENT_ID_BYTE =
@@ -156,6 +160,13 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
   @Override
   public void run() {
     //	  Store the lastFlush as now on the first run.
+    collectStats();
+
+    /* Enter our main loop */
+    while (isRunningAndEnabled()) {}
+  }
+
+  private void collectStats() {
     lastFlush = Instant.now();
 
     filePath = getNewFilePath();
@@ -168,6 +179,7 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
           }
           Instant now = Instant.now();
           Duration timeDelta = Duration.between(lastFlush, now);
+
           statsData.put(now, totalBitsPerSecond);
           if (timeDelta.toSeconds() > flushIntervalSeconds) {
             flushData();
@@ -176,9 +188,6 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
           }
         },
         this.processor);
-
-    /* Enter our main loop */
-    while (isRunningAndEnabled()) {}
   }
 
   private void flushData() {
