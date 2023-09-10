@@ -31,7 +31,7 @@
  *
  *****************************************************************************/
 
-package com.windhoverlabs.yamcs.cfs.stats;
+package com.windhoverlabs.yamcs.stats;
 
 import com.csvreader.CsvWriter;
 import com.google.common.io.BaseEncoding;
@@ -54,6 +54,8 @@ import org.yamcs.Spec.OptionType;
 import org.yamcs.ValidationException;
 import org.yamcs.YConfiguration;
 import org.yamcs.YamcsServer;
+import org.yamcs.events.EventProducer;
+import org.yamcs.events.EventProducerFactory;
 import org.yamcs.mdb.ProcessingStatistics;
 import org.yamcs.protobuf.TmStatistics;
 import org.yamcs.yarch.FileSystemBucket;
@@ -86,6 +88,22 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
 
   private boolean active = false;
 
+  boolean isActive() {
+    return active;
+  }
+
+  void setActive(boolean active) {
+    eventProducer.sendInfo(
+        this.getClass().getSimpleName()
+            + (active ? " Activated" : " Deacitvated. Processor:" + processor));
+
+    if (active) {
+      collectStats();
+    }
+    ;
+    this.active = active;
+  }
+
   /* Constants */
   static final byte[] CFE_FS_FILE_CONTENT_ID_BYTE =
       BaseEncoding.base16().lowerCase().decode("63464531".toLowerCase());
@@ -94,13 +112,13 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
 
   private Path filePath;
   private Path bucketPath;
+  private EventProducer eventProducer;
 
   public Spec getSpec() {
     Spec spec = new Spec();
 
     /* Define our configuration parameters. */
-    spec.addOption("name", OptionType.STRING).withRequired(true);
-    spec.addOption("class", OptionType.STRING).withRequired(true);
+    //    spec.addOption("name", OptionType.STRING).withRequired(true);
     spec.addOption("processor", OptionType.STRING).withRequired(true);
     ;
     spec.addOption("bucket", OptionType.STRING).withRequired(true);
@@ -116,6 +134,11 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
       // TODO Auto-generated catch block
       e.printStackTrace();
     }
+    eventProducer =
+        EventProducerFactory.getEventProducer(
+            yamcsInstance, this.getClass().getSimpleName(), 10000);
+
+    eventProducer.sendInfo(this.getClass().getSimpleName() + " loaded");
     String bucketName;
 
     /* Calidate the configuration that the user passed us. */
@@ -160,7 +183,9 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
   @Override
   public void run() {
     //	  Store the lastFlush as now on the first run.
-    collectStats();
+    if (active) {
+      collectStats();
+    }
 
     /* Enter our main loop */
     while (isRunningAndEnabled()) {}
@@ -177,17 +202,20 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
           for (TmStatistics s : stat.snapshot()) {
             totalBitsPerSecond += s.getDataRate();
           }
-          Instant now = Instant.now();
-          Duration timeDelta = Duration.between(lastFlush, now);
-
-          statsData.put(now, totalBitsPerSecond);
-          if (timeDelta.toSeconds() > flushIntervalSeconds) {
-            flushData();
-            statsData.clear();
-            lastFlush = now;
-          }
+          record(totalBitsPerSecond);
         },
         this.processor);
+  }
+
+  private void record(long totalBitsPerSecond) {
+    Instant now = Instant.now();
+    Duration timeDelta = Duration.between(lastFlush, now);
+    statsData.put(now, totalBitsPerSecond);
+    if (timeDelta.toSeconds() > flushIntervalSeconds) {
+      flushData();
+      statsData.clear();
+      lastFlush = now;
+    }
   }
 
   private void flushData() {

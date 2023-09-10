@@ -1,0 +1,45 @@
+syntax = "proto2";
+
+package yamcs.protobuf.stats;
+
+option java_package = "com.windhoverlabs.yamcs.stats.api";
+option java_outer_classname = "StatsProto";
+option java_multiple_files = true;
+import "yamcs/api/annotations.proto";
+import "yamcs/api/httpbody.proto";
+
+//A collection of useful functions for clients interested in cfs-specific data
+service TmStatsRecorderApi {
+
+  // Activate
+  rpc ActivateTMStatsRecorder(TMStatsRecorderActivateRequest) returns (TMStatsRecorderConfig) {
+    option (yamcs.api.route) = {
+      post: "/api/{instance}/tm_stats_recorder/:activate"
+      body: "*"	
+    };
+  }
+  
+    // Deactivate
+  rpc DeactivateTMStatsRecorder(TMStatsRecorderDeactivateRequest) returns (TMStatsRecorderConfig) {
+    option (yamcs.api.route) = {
+      post: "/api/{instance}/tm_stats_recorder/:deactivate"
+      body: "*"
+    };
+  }
+}
+
+message TMStatsRecorderConfig {
+	  optional string instance = 1;
+	  optional string processor = 2;
+}
+message TMStatsRecorderActivateRequest {
+  // Yamcs instance name.
+  optional string instance = 1;
+  optional string serviceName = 2;
+}
+
+message TMStatsRecorderDeactivateRequest {
+  // Yamcs instance name.
+  optional string instance = 1;
+  optional string serviceName = 2;
+}
