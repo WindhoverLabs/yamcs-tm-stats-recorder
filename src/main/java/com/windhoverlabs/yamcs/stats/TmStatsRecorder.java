@@ -201,6 +201,8 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
           long totalBitsPerSecond = 0;
           for (TmStatistics s : stat.snapshot()) {
             totalBitsPerSecond += s.getDataRate();
+            //            TODO:Add packet times to CSV so that is sync with replay.
+            //            s.getLastPacketTime();
           }
           record(totalBitsPerSecond);
         },
