@@ -49,7 +49,7 @@ services:
 
 ## Example Commands (Python)
 
-```
+```python
 import requests
 r = requests.post('http://127.0.0.1:8090/api/fsw/tm_stats_recorder/:activate',
                   json={"instance": "fsw",
