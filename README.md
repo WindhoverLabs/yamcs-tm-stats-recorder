@@ -47,7 +47,7 @@ services:
       rate: 1 # hertz. At the moment this is limited to 1hertz by YAMCS API. Look at org.yamcs.mdb.ProcessingStatistics.snapshot().
 ```
 
-## Example Commands
+## Example Commands (Python)
 
 ```
 import requests
