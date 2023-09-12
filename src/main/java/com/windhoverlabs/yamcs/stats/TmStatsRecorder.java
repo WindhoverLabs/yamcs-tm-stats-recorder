@@ -224,7 +224,6 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
                 .getProcessor(processor)
                 .getCurrentTime());
     Instant pvGenerationTime = Helpers.toInstant(processorTime);
-    System.out.println("processorTime:" + processorTime);
     statsData.put(pvGenerationTime, totalBitsPerSecond);
     if (timeDelta.toSeconds() > flushIntervalSeconds) {
       flushData();
@@ -251,9 +250,11 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
     //    TODO:Don't use the YAMCS thread pool. Use the Java one.
     timer = YamcsServer.getServer().getThreadPoolExecutor();
     //    TODO
-    float calculatedRate = ((1 / this.statsRate)) * (1000);
+    //    float calculatedRate = ((1 / this.statsRate)) * (1000);
 
-    //    eventProducer.sendInfo("Subscribe to stats at " + calculatedRate + " milliseconds");
+    //    Rate is 1HZ for now.
+    eventProducer.sendInfo("Subscribe to stats at " + 1 + " HZ");
+
     timer.scheduleAtFixedRate(
         () -> {
           ProcessingStatistics ps =
