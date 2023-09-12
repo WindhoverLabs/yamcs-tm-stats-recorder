@@ -11,8 +11,11 @@ jobs:
       - uses: actions/setup-java@v1
         with:
           java-version: 11
+      - name: Check coding style
+        run: |
+          mvn fmt:check
       - name: Build
-        run: mvn -B package
+        run: make build
 
       - name: Coveralls report
         env:
