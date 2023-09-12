@@ -34,8 +34,6 @@
 package com.windhoverlabs.yamcs.stats;
 
 import com.csvreader.CsvWriter;
-import com.google.common.io.BaseEncoding;
-import com.google.protobuf.Timestamp;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -45,6 +43,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -66,10 +65,6 @@ import org.yamcs.yarch.YarchDatabase;
 import org.yamcs.yarch.YarchDatabaseInstance;
 
 public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
-  protected long period;
-  protected boolean ignoreInitial;
-  protected boolean clearBucketsAtStartup;
-  protected boolean deleteFileAfterProcessing;
 
   /* Internal member attributes. */
   protected FileSystemBucket bucket;
@@ -93,6 +88,11 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
 
   private float statsRate; // Times per second
 
+  //  Relative to when recorder is first activated.
+  //  If deactivated, this will be reset
+  // Useful for relative time in CSVs
+  private Instant firstInstant;
+
   boolean isActive() {
     return active;
   }
@@ -104,20 +104,30 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
 
     if (active) {
       collectStats();
+    } else {
+      if (statsTask != null) {
+        firstInstant = null;
+        boolean success = statsTask.cancel(false);
+        if (success) {
+          eventProducer.sendInfo("Stats Task Successfully deactivated");
+        } else {
+          eventProducer.sendWarning("Failed to deactivate stats task. ");
+        }
+      } else {
+        eventProducer.sendWarning(
+            "Failed to deactivate stats task. stats Task does not exist; was there a task acitvated? ");
+      }
     }
 
     this.active = active;
   }
 
-  /* Constants */
-  static final byte[] CFE_FS_FILE_CONTENT_ID_BYTE =
-      BaseEncoding.base16().lowerCase().decode("63464531".toLowerCase());
-
-  private static final String CSV_NAME_POST_FIX = "TM_Stats";
+  private static final String CSV_NAME_POST_FIX = "TM_Stats.csv";
 
   private Path filePath;
   private Path bucketPath;
   private EventProducer eventProducer;
+  private ScheduledFuture<?> statsTask;
 
   public Spec getSpec() {
     Spec spec = new Spec();
@@ -189,7 +199,6 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
 
   @Override
   public void run() {
-    //	  Store the lastFlush as now on the first run.
     if (active) {
       collectStats();
     }
@@ -217,14 +226,17 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
   private void record(long totalBitsPerSecond) {
     Instant now = Instant.now();
     Duration timeDelta = Duration.between(lastFlush, now);
-    Timestamp processorTime =
-        TimeEncoding.toProtobufTimestamp(
-            YamcsServer.getServer()
-                .getInstance(this.getYamcsInstance())
-                .getProcessor(processor)
-                .getCurrentTime());
-    Instant pvGenerationTime = Helpers.toInstant(processorTime);
-    statsData.put(pvGenerationTime, totalBitsPerSecond);
+    Instant processorTime =
+        Helpers.toInstant(
+            TimeEncoding.toProtobufTimestamp(
+                YamcsServer.getServer()
+                    .getInstance(this.getYamcsInstance())
+                    .getProcessor(processor)
+                    .getCurrentTime()));
+    if (firstInstant == null) {
+      firstInstant = processorTime;
+    }
+    statsData.put(processorTime, totalBitsPerSecond);
     if (timeDelta.toSeconds() > flushIntervalSeconds) {
       flushData();
       statsData.clear();
@@ -255,25 +267,27 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
     //    Rate is 1HZ for now.
     eventProducer.sendInfo("Subscribe to stats at " + 1 + " HZ");
 
-    timer.scheduleAtFixedRate(
-        () -> {
-          ProcessingStatistics ps =
-              YamcsServer.getServer()
-                  .getInstance(this.getYamcsInstance())
-                  .getProcessor(processor)
-                  .getTmProcessor()
-                  .getStatistics();
-          consumer.accept(ps);
-        },
-        0,
-        1,
-        TimeUnit.SECONDS);
+    statsTask =
+        timer.scheduleAtFixedRate(
+            () -> {
+              ProcessingStatistics ps =
+                  YamcsServer.getServer()
+                      .getInstance(this.getYamcsInstance())
+                      .getProcessor(processor)
+                      .getTmProcessor()
+                      .getStatistics();
+              consumer.accept(ps);
+            },
+            0,
+            1,
+            TimeUnit.SECONDS);
   }
 
   private void writeToCSV(String path, HashMap<Instant, Long> statsData) {
     CsvWriter csvWriter = null;
     ArrayList<String> columnHeaders = new ArrayList<String>();
-    columnHeaders.add("Time");
+    columnHeaders.add("Reception_Time");
+    columnHeaders.add("Delta_Time_Milli");
     columnHeaders.add("Bits_Per_second");
     try {
       csvWriter = new CsvWriter(new FileWriter(path, true), ',');
@@ -295,7 +309,9 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
     ArrayList<Instant> sortedTimeStamps = new ArrayList<Instant>(statsData.keySet());
     Collections.sort(sortedTimeStamps);
     for (Instant t : sortedTimeStamps) {
+      Duration timeDelta = Duration.between(firstInstant, t);
       record.add(t.toString());
+      record.add(Long.toString(timeDelta.toMillis()));
       record.add(Long.toString(statsData.get(t)));
       try {
         csvWriter.writeRecord(record.toArray(new String[0]));
