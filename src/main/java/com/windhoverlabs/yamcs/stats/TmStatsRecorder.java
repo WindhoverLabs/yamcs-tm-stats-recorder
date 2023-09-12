@@ -43,8 +43,8 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.Map.Entry;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -251,7 +251,7 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
     //    TODO:Don't use the YAMCS thread pool. Use the Java one.
     timer = YamcsServer.getServer().getThreadPoolExecutor();
     //    TODO
-    //    float calculatedRate = ((1 / this.statsRate)) * (1000);
+    float calculatedRate = ((1 / this.statsRate)) * (1000);
 
     //    eventProducer.sendInfo("Subscribe to stats at " + calculatedRate + " milliseconds");
     timer.scheduleAtFixedRate(
@@ -290,9 +290,12 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
     }
 
     ArrayList<String> record = new ArrayList<String>();
-    for (Entry<Instant, Long> entry : statsData.entrySet()) {
-      record.add(entry.getKey().toString());
-      record.add(Long.toString(entry.getValue()));
+
+    ArrayList<Instant> sortedTimeStamps = new ArrayList<Instant>(statsData.keySet());
+    Collections.sort(sortedTimeStamps);
+    for (Instant t : sortedTimeStamps) {
+      record.add(t.toString());
+      record.add(Long.toString(statsData.get(t)));
       try {
         csvWriter.writeRecord(record.toArray(new String[0]));
       } catch (IOException e) {
