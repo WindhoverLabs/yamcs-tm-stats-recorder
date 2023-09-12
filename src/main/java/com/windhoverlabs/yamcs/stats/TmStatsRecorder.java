@@ -35,6 +35,7 @@ package com.windhoverlabs.yamcs.stats;
 
 import com.csvreader.CsvWriter;
 import com.google.common.io.BaseEncoding;
+import com.google.protobuf.Timestamp;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -42,8 +43,8 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.Map.Entry;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -54,10 +55,12 @@ import org.yamcs.Spec.OptionType;
 import org.yamcs.ValidationException;
 import org.yamcs.YConfiguration;
 import org.yamcs.YamcsServer;
+import org.yamcs.client.Helpers;
 import org.yamcs.events.EventProducer;
 import org.yamcs.events.EventProducerFactory;
 import org.yamcs.mdb.ProcessingStatistics;
 import org.yamcs.protobuf.TmStatistics;
+import org.yamcs.utils.TimeEncoding;
 import org.yamcs.yarch.FileSystemBucket;
 import org.yamcs.yarch.YarchDatabase;
 import org.yamcs.yarch.YarchDatabaseInstance;
@@ -88,6 +91,8 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
 
   private boolean active = false;
 
+  private float statsRate; // Times per second
+
   boolean isActive() {
     return active;
   }
@@ -100,7 +105,7 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
     if (active) {
       collectStats();
     }
-    ;
+
     this.active = active;
   }
 
@@ -120,8 +125,8 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
     /* Define our configuration parameters. */
     //    spec.addOption("name", OptionType.STRING).withRequired(true);
     spec.addOption("processor", OptionType.STRING).withRequired(true);
-    ;
     spec.addOption("bucket", OptionType.STRING).withRequired(true);
+    spec.addOption("rate", OptionType.INTEGER).withRequired(true);
 
     return spec;
   }
@@ -138,7 +143,8 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
         EventProducerFactory.getEventProducer(
             yamcsInstance, this.getClass().getSimpleName(), 10000);
 
-    eventProducer.sendInfo(this.getClass().getSimpleName() + " loaded");
+    eventProducer.sendInfo(
+        this.getClass().getSimpleName() + " loaded with config:" + config.toString());
     String bucketName;
 
     /* Calidate the configuration that the user passed us. */
@@ -150,6 +156,7 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
 
     /* Instantiate our member objects. */
     this.processor = config.getString("processor", "realtime");
+    this.statsRate = config.getInt("rate", 50);
     /* Read in our configuration parameters. */
     bucketName = config.getString("bucket");
 
@@ -201,8 +208,6 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
           long totalBitsPerSecond = 0;
           for (TmStatistics s : stat.snapshot()) {
             totalBitsPerSecond += s.getDataRate();
-            //            TODO:Add packet times to CSV so that is sync with replay.
-            //            s.getLastPacketTime();
           }
           record(totalBitsPerSecond);
         },
@@ -212,7 +217,15 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
   private void record(long totalBitsPerSecond) {
     Instant now = Instant.now();
     Duration timeDelta = Duration.between(lastFlush, now);
-    statsData.put(now, totalBitsPerSecond);
+    Timestamp processorTime =
+        TimeEncoding.toProtobufTimestamp(
+            YamcsServer.getServer()
+                .getInstance(this.getYamcsInstance())
+                .getProcessor(processor)
+                .getCurrentTime());
+    Instant pvGenerationTime = Helpers.toInstant(processorTime);
+    System.out.println("processorTime:" + processorTime);
+    statsData.put(pvGenerationTime, totalBitsPerSecond);
     if (timeDelta.toSeconds() > flushIntervalSeconds) {
       flushData();
       statsData.clear();
@@ -237,9 +250,10 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
   public void subscribeTMStats(Consumer<ProcessingStatistics> consumer, String processor) {
     //    TODO:Don't use the YAMCS thread pool. Use the Java one.
     timer = YamcsServer.getServer().getThreadPoolExecutor();
+    //    TODO
+    float calculatedRate = ((1 / this.statsRate)) * (1000);
 
-    //    Make "rf_replay" configurable"
-
+    //    eventProducer.sendInfo("Subscribe to stats at " + calculatedRate + " milliseconds");
     timer.scheduleAtFixedRate(
         () -> {
           ProcessingStatistics ps =
@@ -250,7 +264,7 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
                   .getStatistics();
           consumer.accept(ps);
         },
-        1,
+        0,
         1,
         TimeUnit.SECONDS);
   }
@@ -276,9 +290,12 @@ public class TmStatsRecorder extends AbstractYamcsService implements Runnable {
     }
 
     ArrayList<String> record = new ArrayList<String>();
-    for (Entry<Instant, Long> entry : statsData.entrySet()) {
-      record.add(entry.getKey().toString());
-      record.add(Long.toString(entry.getValue()));
+
+    ArrayList<Instant> sortedTimeStamps = new ArrayList<Instant>(statsData.keySet());
+    Collections.sort(sortedTimeStamps);
+    for (Instant t : sortedTimeStamps) {
+      record.add(t.toString());
+      record.add(Long.toString(statsData.get(t)));
       try {
         csvWriter.writeRecord(record.toArray(new String[0]));
       } catch (IOException e) {
