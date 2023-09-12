@@ -1,8 +1,9 @@
 [![CI](https://github.com/WindhoverLabs/yamcs-cfs-ds/actions/workflows/ci.yml/badge.svg)](https://github.com/WindhoverLabs/yamcs-cfs-ds/actions/workflows/ci.yml)
 [![Coverage Status](https://coveralls.io/repos/github/WindhoverLabs/yamcs-cfs-ds/badge.svg?branch=main)](https://coveralls.io/github/WindhoverLabs/yamcs-cfs-ds?branch=main)
 # yamcs-cfs-ds
-A YAMCS plugin for the Core Flight System (CFS) Data Storage (DS) application.  This plugin will automatically detect and parse DS data logs and inject the recorded
-messages in the YAMCS database.  This only parses telemetry.  Command bitpattern parsing is not supported.
+A YAMCS plugin that records total throughput of downlink. Can be used for any processor the user specifies in the configuration; realtime or replay. 
+Can be activated at runtime via http calls.
+
 
 # Table of Contents
 1. [Dependencies](#dependencies)
