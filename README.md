@@ -1,6 +1,6 @@
-[![CI](https://github.com/WindhoverLabs/yamcs-cfs-ds/actions/workflows/ci.yml/badge.svg)](https://github.com/WindhoverLabs/yamcs-cfs-ds/actions/workflows/ci.yml)
-[![Coverage Status](https://coveralls.io/repos/github/WindhoverLabs/yamcs-cfs-ds/badge.svg?branch=main)](https://coveralls.io/github/WindhoverLabs/yamcs-cfs-ds?branch=main)
-# yamcs-cfs-ds
+[![CI](https://github.com/WindhoverLabs/yamcs-tm-stats-recorder/actions/workflows/ci.yml/badge.svg)](https://github.com/WindhoverLabs/yamcs-tm-stats-recorder/actions/workflows/ci.yml)
+[![Coverage Status](https://coveralls.io/repos/github/WindhoverLabs/yamcs-tm-stats-recorder/badge.svg?branch=main)](https://coveralls.io/github/WindhoverLabs/yamcs-tm-stats-recorder?branch=main)
+# yamcs-tm-stats-recorder
 A YAMCS plugin that records total throughput of downlink. Can be used for any processor the user specifies in the configuration; realtime or replay. 
 Can be activated at runtime via http calls.
 
@@ -8,9 +8,7 @@ Can be activated at runtime via http calls.
 # Table of Contents
 1. [Dependencies](#dependencies)
 2. [To Build](#to_build)  
-3. [To Run](#to_run)
 4. [Add It to your YAMCS Install](#add_it_to_yamcs)   
-5. [XTCE Patterns and Conventions](#XTCE-Patterns-and-Conventions)
 5. [Build Documentation](#build_documentation)
 
 
@@ -35,11 +33,6 @@ mvn dependency:copy-dependencies
 ### Configuration
 ```
 services:
-  - class: org.yamcs.archive.XtceTmRecorder
-  - class: org.yamcs.archive.ParameterRecorder
-  - class: org.yamcs.archive.AlarmRecorder
-  - class: org.yamcs.archive.EventRecorder
-  - class: org.yamcs.archive.ReplayServer
   - class: com.windhoverlabs.yamcs.stats.TmStatsRecorder
     name: "TmStatsRecorder"
     args:
